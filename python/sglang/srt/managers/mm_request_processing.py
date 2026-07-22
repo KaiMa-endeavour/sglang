@@ -12,7 +12,6 @@ handling.
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 from sglang.srt.environ import envs
@@ -87,7 +86,6 @@ async def run_mm_processor_for_request(
         validate_mm_limits(obj, server_args.limit_mm_data_per_request)
 
     mm_inputs = None
-    mm_preprocess_t0 = None
 
     if (
         not server_args.language_only
@@ -106,7 +104,6 @@ async def run_mm_processor_for_request(
                     "Encoder embedding not available, "
                     "falling back to local mm processing"
                 )
-            mm_preprocess_t0 = time.perf_counter()
             mm_inputs = await mm_processor.process_mm_data_async(
                 image_data=obj.image_data,
                 audio_data=obj.audio_data,
@@ -121,7 +118,6 @@ async def run_mm_processor_for_request(
     ):
         # In language_only mode with zmq_to_scheduler/mooncake, if we didn't dispatch
         # to encoder (e.g., only one image), process locally like non-language_only mode
-        mm_preprocess_t0 = time.perf_counter()
         mm_inputs = await mm_processor.process_mm_data_async(
             image_data=obj.image_data,
             audio_data=obj.audio_data,
@@ -136,26 +132,6 @@ async def run_mm_processor_for_request(
         token_type_ids = mm_inputs.token_type_ids
         if not isinstance(token_type_ids, list):
             token_type_ids = token_type_ids.flatten().tolist()
-    if (
-        mm_preprocess_t0 is not None
-        and mm_inputs is not None
-        and logger.isEnabledFor(logging.DEBUG)
-    ):
-        feature_shapes = [
-            tuple(item.feature.shape)
-            for item in (mm_inputs.mm_items or [])
-            if getattr(item, "feature", None) is not None
-            and hasattr(item.feature, "shape")
-        ]
-        logger.debug(
-            "[MM preprocess] done: rid=%s n_images=%d input_ids_len=%d "
-            "feature_shapes=%s mm_preprocess_ms=%.2f",
-            obj.rid,
-            len(obj.image_data) if obj.image_data else 0,
-            len(input_ids) if input_ids is not None else 0,
-            feature_shapes,
-            (time.perf_counter() - mm_preprocess_t0) * 1000,
-        )
     # Caller-supplied per-image hashes (external KV routers, e.g.
     # routing-aware orchestrators that compute a content-addressed
     # hash before dispatch). Setting MultimodalDataItem.hash here
