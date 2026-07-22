@@ -223,7 +223,6 @@ impl Ingress {
                 // Hand off to the tokenizer pool; it returns the request as a
                 // `Tokenized` event (Queued, or Failed on error). Doesn't loop.
                 RequestState::Tokenizing => {
-                    tracing::debug!("Kan ==== stage=tm_to_tok rid={}", req.rid);
                     if let Err(err) = self.senders.tok.send(req) {
                         // Pool gone (workers exited); flume hands the request back.
                         let mut req = err.into_inner();
@@ -302,8 +301,6 @@ impl Ingress {
             ids: Bytes::new(),
         }) {
             self.fail(&mut req, Error::QueueFull);
-        } else {
-            tracing::debug!("Kan ==== stage=tm_to_scheduler rid={} control", req.rid);
         }
     }
 
@@ -389,15 +386,9 @@ impl Ingress {
                 return;
             }
         };
-        let n_tokens = ids.len() / 8; // raw LE i64 bytes
 
         if !self.ingress.try_push(IngressMsg { header, ids }) {
             self.fail(&mut req, Error::QueueFull);
-        } else {
-            tracing::debug!(
-                "Kan ==== stage=tm_to_scheduler rid={} n_tokens={n_tokens}",
-                req.rid
-            );
         }
         // On success the scheduler owns the request (egress arrives by rid); we
         // drop our `Request` here — the detok shard holds the sink.
